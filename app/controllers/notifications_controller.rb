@@ -9,7 +9,7 @@ class NotificationsController < ApplicationController
     else 
       to = params["From"]
     end
-    json = {  
+    oOrder = {  
    "session_token":"137222zVx9lebur0cfqjIJDzEgE4sZcvSpEzjcmAousRc6DNvf7YhJDwQwNYFEbEcg1bRMj0vZESqFIEqrIBOV7LiCJgEE",
    "order":{  
       "failed_promo_codes":[  
@@ -100,11 +100,56 @@ class NotificationsController < ApplicationController
       "sdk":"TINYOWL_DEFAULT"
    }
 }
-    json = json.to_json
-    result = RestClient.post "http://res-product.tinyowl.com/restaurant/api/v1/restaurants/54f15cf6edf5cfb8a3000282/order", json, :content_type => :json, :accept => :json
-    hash = JSON.parse result
-    message = client.messages.create from: '+1 980-365-8326', to: to, body: 'Your Order Id is : ' + hash["order_id"]
-    render plain: message.status
+    # orderJSON = oOrder.to_json
+    
+    # orderResponse = RestClient.post "http://res-product.tinyowl.com/restaurant/api/v1/restaurants/54f15cf6edf5cfb8a3000282/order", orderJSON, :content_type => :json, :accept => :json
+    # orderHash = JSON.parse orderResponse
+    # orderText = params[:Body].from(params[:Body].index('-') + 2).to(-1)
+    
+    oDishes = {
+"locality_id": 7966,
+"device_id":"sasdfafafaf",
+"app_version":"3.3.6",
+"platform":"ANDROID",
+"dishes":{
+     "token": {
+       "valid_until": 1411204180,
+         "start_index":1,
+       "network": "3G",
+       "more": true
+     },
+ "image_width": 800,
+     "dpi": 2
+ },
+"restaurants": {
+       "width": 400,
+     "token":{
+       "valid_until": 1411204180,
+       "start_index": 1,
+       "network": "3G",
+       "more": true
+     },
+   "sort_by": "delivery_time",
+     "filter_by": {
+         "cuisines": [],
+         "cost_for_two_ranges": []
+     },
+     "dpi": 2
+}
+}
+    oDishesJSON = oDishes.to_json
+    debugger
+    dishesResponse = JSON.parse(RestClient.post("http://app-tech-2.tinyowl.com/restaurant/api/v1/feed", oDishesJSON, :content_type => :json, :accept => :json)) 
+    # dishesResponseTwo = RestClient.get 'http://app-tech-2.tinyowl.com/restaurant/api/v1/search_dishes?input=chick&locality_id=7966&width=800', {:accept => :json}
+
+    debugger
+    # if orderText.include? "hungry"
+    #   message = client.messages.create from: '+1 980-365-8326', to: to, body: 'Your order placed at time:' + Time.at(orderHash["created_at"]).strftime("%H:%M") + ', Your order id is: ' + orderHash["order_id"] + ', Expected to be delivered at time: ' + Time.at(orderHash["delivery_time"]).strftime("%H:%M") + ', Thanks for ordering with Tinyowl'
+    #   # render plain: message.status
+    # else
+    #   message = client.messages.create from: '+1 980-365-8326', to: to, body: 'Incorrect format to place order, please follow the format -> hungry <pincode> <dish>'
+    #   # render plain: message.body
+    # end
   end
  
 end
