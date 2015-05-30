@@ -1,155 +1,184 @@
 class NotificationsController < ApplicationController
- 
+  include ApplicationHelper
+
   skip_before_filter :verify_authenticity_token
- 
+  @@dishesHash = {}
+  
   def notify
     client = Twilio::REST::Client.new Rails.application.secrets.twilio_account_sid, Rails.application.secrets.twilio_auth_token
     if params["From"].nil?
-      to = '+19717173952'
+      to = '+19717173952' #test condition
     else 
-      to = params["From"]
+      to = params["From"] #number from which the SMS came
     end
-    oOrder = {  
-   "session_token":"137222zVx9lebur0cfqjIJDzEgE4sZcvSpEzjcmAousRc6DNvf7YhJDwQwNYFEbEcg1bRMj0vZESqFIEqrIBOV7LiCJgEE",
-   "order":{  
-      "failed_promo_codes":[  
-      ],
-      "parent_order_id":"SG495161754",
-      "total_amount":215,
-      "number_of_items":1,
-      "delivery_time":1432799893,
-      "address_id":198834,
-      "restaurant_id":"54f15cf6edf5cfb8a3000282",
-      "min_delivery_amount":200,
-      "restaurant_name":"SUBWAY",
-      "restaurant_area":"SEASON MALL, MAGARPATTA",
-      "delivery_duration":2700,
-      "total_discount":0,
-      "payable_amount":215,
-      "delivery_charges":0,
-      "packaging_charges":5,
-      "service_tax":0,
-      "vat":0,
-      "offers_by_restaurant":0,
-      "offers_by_tinyowl":0,
-      "offer_ids":[  
-
-      ],
-      "promo_codes":[  
-
-      ],
-      "is_gift_order":false,
-      "show_questions":false,
-      "order_status":"DRAFT",
-      "order_delivery_feedback":"DEFAULT",
-      "delivery_type":"DEFAULT",
-      "placed_from_device":false,
-      "total_offers_by_tinyowl":0,
-      "total_offers_by_restaurant":0,
-      "rewarded_tinyowl_money":0,
-      "total_rewarded_tinyowl_money":0,
-      "order_notifications":[  
-
-      ],
-      "is_group_order":false,
-      "discounted_amount":215,
-      "paid_by_card":0,
-      "paid_by_cod":215,
-      "paid_by_net_banking":0,
-      "paid_by_coins":0,
-      "paid_by_wallet":0,
-      "paid_by_tinyowl_money":0,
-      "cart":{  
-         "amount":210,
-         "number_of_items":1,
-         "discount":0,
-         "offers_by_restaurant":0,
-         "offers_by_tinyowl":0,
-         "total_discount":0,
-         "order_id":"40f630e1-5d87-4d2b-a9f9-f2a3de570996",
-         "order_items":[  
-            {  
-               "id":"d9e5a8bd-51c4-4c85-9899-96d911c47d9b",
-               "item_size_id":"54f15cf7edf5cfb8a3000301",
-               "item_id":"54f15cf7edf5cfb8a3000300",
-               "name":"ALOO PATTY SALAD",
-               "base_price":210,
-               "total_price":210,
-               "quantity":1,
-               "size":"NONE",
-               "offers_by_restaurant":0,
-               "offers_by_tinyowl":0,
-               "cart_id":"6bb2c3c2-ee6f-4386-8a8d-e527bb3a5b25",
-               "order_item_choices":[  
-                  {  
-                     "choice_id":"54f15cf7edf5cfb8a300029c",
-                     "choice_name":"CHOOSE YOUR SAUCE",
-                     "option_id":"54f15cf7edf5cfb8a300029d",
-                     "choice_option_name":"SWEET ONION",
-                     "number":1,
-                     "price":0,
-                     "order_item_id":"d9e5a8bd-51c4-4c85-9899-96d911c47d9b"
-                  }
-               ]
+    
+    #fetch the SMS text, assuming SMS to be sent to Twillo account
+    orderText = params[:Body].from(params[:Body].index('-') + 2).to(-1)
+    orderTextInitial = orderText.split(' ')[0]
+    # Case if HUNGRY is included in the message
+    if orderTextInitial == "HUNGRY"
+      pincode = orderText.index(' ').nil? ? nil : orderText.from(orderText.index(' ') + 1).to(-1).to_i
+      localityId = find_locality(pincode)
+      if localityId == 0 #if locality not found
+        messageBody = 'Locality not found, SMS HUNGRY <your_pincode> to search '
+      else 
+        #fetch the top 5 dishes for that locality
+         oDishes = {
+        "locality_id": localityId,
+        "device_id":"sasdfafafaf",
+        "app_version":"3.3.6",
+        "platform":"ANDROID",
+        "dishes":{
+             "token": {
+               "valid_until": 1411204180,
+                 "start_index":1,
+               "network": "3G",
+               "more": true
+             },
+         "image_width": 800,
+             "dpi": 2
+         },
+        "restaurants": {
+               "width": 400,
+             "token":{
+               "valid_until": 1411204180,
+               "start_index": 1,
+               "network": "3G",
+               "more": true
+             },
+           "sort_by": "delivery_time",
+             "filter_by": {
+                 "cuisines": [],
+                 "cost_for_two_ranges": []
+             },
+             "dpi": 2
+        }
+     }
+      oDishesJSON = oDishes.to_json
+      dishesResponse = JSON.parse(RestClient.post("http://app-tech.tinyowl.com/restaurant/api/v1/feed", oDishesJSON, :content_type => :json, :accept => :json)) 
+      messageBody = 'Dishes available at this time: ' 
+      if dishesResponse["status_codes"]["dishes"] == "SUCCESS" 
+        dishesResponse["dishes"]["dishes"].each_with_index do |dish, i| 
+          break if i > 4  
+          @@dishesHash[i+1] = dish['name'] + '_' + dish['price'].to_s
+          messageBody = messageBody + "#{i+1}) #{dish['name']} - Rs." + dish['price'].to_s + ", "
+      end
+        messageBody = messageBody.from(0).to(messageBody.rindex(',') - 1) + ', SMS DISH <your_dish_number> <quantity> <address> to order';
+      else
+        messageBody = ':( No dishes available at this time'
+      end
+    end
+      
+      message = client.messages.create from: '+1 980-365-8326', to: to, body: messageBody +  ', Thanks for using Tinyowl'
+      render :nothing => true, :status => 200
+    
+    elsif orderTextInitial == "DISH" && @@dishesHash != {} # Case if DISH is included in the message
+      dishArray = orderText.split(' ');
+      dishId = dishArray[1].nil? ? 0 : dishArray[1].to_i
+      quantity = dishArray[2].nil? ? 0 : dishArray[2]
+      address = dishArray[3].nil? ? '' : dishArray[3]
+      if dishId < 6 && quantity != 0 && address != ''
+      #place order if a particular dish is sent by the customer, hard-coded as of now
+      total_price = @@dishesHash[dishId].split('_')[1].to_f * quantity.to_f
+      oOrder = {
+          "session_token":"137222zVx9lebur0cfqjIJDzEgE4sZcvSpEzjcmAousRc6DNvf7YhJDwQwNYFEbEcg1bRMj0vZESqFIEqrIBOV7LiCJgEE",
+          "order": {
+            "failed_promo_codes": [
+            ],
+            "total_amount": total_price.to_i,
+            "number_of_items": quantity.to_i,
+            "address_id": 197966,
+            "restaurant_id": "52f76bd0f92ea1cd080000ca",
+            "min_delivery_amount": 0,
+            "restaurant_name": "Juicy Stuff",
+            "restaurant_area": "Powai",
+            "delivery_duration": 60,
+            "total_discount": 0,
+            "payable_amount": total_price.to_i,
+            "delivery_charges": 0,
+            "packaging_charges": 0,
+            "service_tax": 0,
+            "vat": 0,
+            "offers_by_restaurant": 0,
+            "offers_by_tinyowl": 0,
+            "offer_ids": [
+              
+            ],
+            "promo_codes": [
+              
+            ],
+            "is_gift_order": false,
+            "show_questions": false,
+            "order_status": "DRAFT",
+            "order_delivery_feedback": "DEFAULT",
+            "delivery_type": "EXPRESS",
+            "placed_from_device": false,
+            "total_offers_by_tinyowl": 0,
+            "total_offers_by_restaurant": 0,
+            "rewarded_tinyowl_money": 0,
+            "total_rewarded_tinyowl_money": 0,
+            "order_notifications": [
+              
+            ],
+            "is_group_order": false,
+            "discounted_amount": 0,
+            "paid_by_card": 0,
+            "paid_by_cod": total_price.to_i,
+            "paid_by_net_banking": 0,
+            "paid_by_coins": 0,
+            "paid_by_wallet": 0,
+            "paid_by_tinyowl_money": 0,
+            "cart": {
+              "amount": total_price.to_i,
+              "number_of_items": quantity.to_i,
+              "discount": 0,
+              "offers_by_restaurant": 0,
+              "offers_by_tinyowl": 0,
+              "total_discount": 0,
+              "order_id": "85ea730e-ed68-4181-9d7e-5640fb6bdd55",
+              "order_items": [
+                {
+                  "id": "973c5298-76c9-42cb-bc39-1af6ae0c392f",
+                  "item_size_id": "5516734004497f5f82000025",
+                  "item_id": "5516734004497f5f82000024",
+                  "name": @@dishesHash[dishId].split('_')[0].to_s,
+                  "base_price": @@dishesHash[dishId].split('_')[1].to_i,
+                  "total_price": @@dishesHash[dishId].split('_')[1].to_i,
+                  "quantity": quantity.to_i,
+                  "discount": 0,
+                  "offers_by_restaurant": 0,
+                  "offers_by_tinyowl": 0,
+                  "cart_id": "07c348ec-f820-4ed7-a67a-5186bfd33c9f",
+                  "order_item_choices": [
+                    
+                  ]
+                }
+              ]
             }
-         ]
-      }
-   },
-   "payment":{  
-      "method":"COD",
-      "sdk":"TINYOWL_DEFAULT"
-   }
-}
-    # orderJSON = oOrder.to_json
+          },
+          "payment": {
+            "method": "COD",
+            "sdk": "TINYOWL_DEFAULT"
+          }
+        }
+        orderJSON = oOrder.to_json
+        orderResponse = RestClient.post "http://app-tech.tinyowl.com/restaurant/api/v1/restaurants/52f76bd0f92ea1cd080000ca/order", orderJSON, :content_type => :json, :accept => :json
+        orderHash = JSON.parse orderResponse
+        messageBody = 'You ordered ' + quantity + ' ' + @@dishesHash[dishId].split('_')[0] + ', Your order placed at time:' + Time.at(orderHash["created_at"]).strftime("%H:%M") + ', Your order id is: ' + orderHash["order_id"] + ', Expected to be delivered at time: ' + Time.at(orderHash["delivery_time"]).strftime("%H:%M") + ', Total price: ' + total_price.to_s + ', Thanks for ordering with Tinyowl :)'
+      elsif  
+        messageBody = 'Incorrect format, SMS DISH <your_dish_number> <quantity> <address> to order'
+        end
+        message = client.messages.create from: '+1 980-365-8326', to: to, body: messageBody
+        render :nothing => true, :status => 200
     
-    # orderResponse = RestClient.post "http://res-product.tinyowl.com/restaurant/api/v1/restaurants/54f15cf6edf5cfb8a3000282/order", orderJSON, :content_type => :json, :accept => :json
-    # orderHash = JSON.parse orderResponse
-    # orderText = params[:Body].from(params[:Body].index('-') + 2).to(-1)
-    
-    oDishes = {
-"locality_id": 7966,
-"device_id":"sasdfafafaf",
-"app_version":"3.3.6",
-"platform":"ANDROID",
-"dishes":{
-     "token": {
-       "valid_until": 1411204180,
-         "start_index":1,
-       "network": "3G",
-       "more": true
-     },
- "image_width": 800,
-     "dpi": 2
- },
-"restaurants": {
-       "width": 400,
-     "token":{
-       "valid_until": 1411204180,
-       "start_index": 1,
-       "network": "3G",
-       "more": true
-     },
-   "sort_by": "delivery_time",
-     "filter_by": {
-         "cuisines": [],
-         "cost_for_two_ranges": []
-     },
-     "dpi": 2
-}
-}
-    oDishesJSON = oDishes.to_json
-    debugger
-    dishesResponse = JSON.parse(RestClient.post("http://app-tech-2.tinyowl.com/restaurant/api/v1/feed", oDishesJSON, :content_type => :json, :accept => :json)) 
-    # dishesResponseTwo = RestClient.get 'http://app-tech-2.tinyowl.com/restaurant/api/v1/search_dishes?input=chick&locality_id=7966&width=800', {:accept => :json}
-
-    debugger
-    # if orderText.include? "hungry"
-    #   message = client.messages.create from: '+1 980-365-8326', to: to, body: 'Your order placed at time:' + Time.at(orderHash["created_at"]).strftime("%H:%M") + ', Your order id is: ' + orderHash["order_id"] + ', Expected to be delivered at time: ' + Time.at(orderHash["delivery_time"]).strftime("%H:%M") + ', Thanks for ordering with Tinyowl'
-    #   # render plain: message.status
-    # else
-    #   message = client.messages.create from: '+1 980-365-8326', to: to, body: 'Incorrect format to place order, please follow the format -> hungry <pincode> <dish>'
-    #   # render plain: message.body
-    # end
+      elsif orderTextInitial == "DISH" && @@dishesHash == {}
+        message = client.messages.create from: '+1 980-365-8326', to: to, body: 'Request timed-out, please follow these steps to order -> 1. SMS HUNGRY <pincode> to get the list of available dishes in your area, 2. SMS DISH <your_dish_number> <quantity> <address> to order'
+        render :nothing => true, :status => 200
+        
+      else #Default case 
+        message = client.messages.create from: '+1 980-365-8326', to: to, body: 'Incorrect format to place order, please follow these steps to order -> 1. SMS HUNGRY <pincode> to get the list of available dishes in your area, 2. SMS DISH <your_dish_number> <quantity> <address> to order'
+        render :nothing => true, :status => 200
+   
+    end 
   end
- 
 end
